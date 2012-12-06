@@ -1,0 +1,7 @@
+require './restaurant.rb'
+
+menu_file = ARGV[0]
+ARGV.shift
+menu_choices = ARGV
+
+familiar_faces_restaurants = Restaurant.new(menu_file, menu_choices)
