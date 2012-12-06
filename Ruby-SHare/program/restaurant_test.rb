@@ -25,7 +25,7 @@ describe Restaurant do
     answer.to_s.should == ["6", "11.0"]
   end
   
-  it "TEST 5: should give us the right order when the order is 2 items requiring 2 combos -- didn't get this case implemented " do
+  it "TEST 5: should give us the right order when the order is 6 items requiring 2 combos -- didn't get this case implemented " do
     answer = Restaurant.new 'menus3.csv',["fish_sandwich", "blue_berry_muffin", "chocolate_milk","fish_sandwich", "blue_berry_muffin", "chocolate_milk"]
     answer.to_s.should == ["6", "12.0"]
   end
