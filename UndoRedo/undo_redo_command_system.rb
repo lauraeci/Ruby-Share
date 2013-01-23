@@ -1,8 +1,28 @@
-require 'thread'
-
+ #
+ # undo_redo_command_system.rb
+ #
+ #  Created on: January 21, 2013
+ #      Author: marshalll
+ #
+ # Solution uses a variation of the Gang of Four Command Pattern
+ # on Page 233.
+ #
+ # Programming problem:
+ # UNDO REDO
+ # Build a simple undo/redo system in any object-oriented programming
+ # language. It should meet these criteria:
+ # - An unlimited number of operations can be performed, undone and redone
+ # - The system is generic and can easily be extended with new kinds of
+ # actions
+ # - The code is production quality
+ # - The undo/redo functionality is demonstrated in a simple console
+ # application
+ # - It doesn't use heavily platform-specific code
+ #/
+ 
 # An interface for executing an operation
+# used as a base class for new commands in the system
 class Command
-  attr_reader :state
   
   def execute 
   end
@@ -10,29 +30,47 @@ class Command
   def unexecute
   end
   
-  def usage
-    
+  def usage 
   end
   
   def set_args
-    
   end
+  
+  def description
+  end
+  
 end
 
+# Invoker
+# Runs the commands registered in register_commands
+# To add a new command, add this command and its constructor to the commands_list hash
 class Invoker
-  attr_reader :cmd_queue
-  attr_reader :redo_queue
+  attr_reader :cmd_stack
+  attr_reader :redo_stack
+  attr_reader :commands_list
   
+  def register_commands()
+    @commands_list["new_file"] = "CreateFileCommand.new"
+    # example: 
+    # @commands_list["spend_money"] = "SpendMoneyCommand.new"
+  end
+  
+  # getCommands
+  # @returns: list of registered commands in a hash
+  def getCommands
+    return @commands_list
+  end
+
   def initialize
-    if (@cmd_queue.nil?)
-      # uses Ruby's Thread safe queue
-      @cmd_queue = Queue.new
-      
+    if (@cmd_stack.nil?)
+      @cmd_stack = Array.new
     end
     
-    if (@redo_queue.nil?)
-      @redo_queue = Queue.new
+    if (@redo_stack.nil?)
+      @redo_stack = Array.new
     end
+    @commands_list = Hash.new
+    self.register_commands()
   end
   
   def usage(current_cmd)
@@ -40,48 +78,52 @@ class Invoker
   end
   
   def doCommand (current_cmd, args)
-    @cmd_queue.push(current_cmd)
-    current_cmd.set_args(args)
-    current_cmd.execute()
-    @redo_queue.clear()
+    new_cmd = eval(@commands_list[current_cmd])
+    new_cmd.set_args(args)
+    @cmd_stack.push(new_cmd)
+    new_cmd.execute()
+    @redo_stack.clear()
   end
   
   def undoCommand ()
-    puts "Undo size #{@cmd_queue.size}"
-    if @cmd_queue.size == 0
+    if @cmd_stack.size == 0
       puts "Nothing to undo."
       return
     end
-    commandToUndo = @cmd_queue.pop()
-    puts "Undo size #{@cmd_queue.size}"
+    
+    commandToUndo = @cmd_stack.pop()
     commandToUndo.unexecute()
-    @redo_queue.push(commandToUndo)
+    
+    @redo_stack.push(commandToUndo)
   end
   
-  def redoCommand()
-    puts "Redo size #{@redo_queue.size}"
-    if @redo_queue.size == 0
+  def redoCommand() 
+    if @redo_stack.size == 0
       puts "Nothing to redo."
       return
     end
-    commandToRedo = @redo_queue.pop()
-    puts "Redo size #{@redo_queue.size}"
+    
+    commandToRedo = @redo_stack.pop()
     commandToRedo.execute()
     
-    # Add back to the command queue to enable undo after redo
-    @cmd_queue.push(commandToRedo)
+    # Add back to the command stack to enable undo after redo
+    @cmd_stack.push(commandToRedo)
   end
   
 end
 
+# CreateFileCommand
 # a new Command, i.e.PasteComand, OpenCommand
 # implements execution by invoking the corresponding operations
-# on a receiver
-# implements unexecute by 
+# implements unexecute by invoking the corresponding operations 
 class CreateFileCommand < Command
   
   def usage
     return "new_file <path> <contents>"
+  end
+  
+  def description
+    puts self.class.name.to_s + " : " + @path.to_s
   end
   
   def execute
@@ -91,40 +133,47 @@ class CreateFileCommand < Command
     puts "Created #{@path}!"
   end
   
-  def unexecute
-    begin 
-      File.delete(@path)
-      puts "Deleted #{@path}!"
-    rescue Errno::ENOENT
-      puts "An error occurred, not file to delete #{@path}!"
-    end
+  def unexecute 
+    File.delete(@path)
+    puts "Deleted #{@path}!"
   end
   
+  # set_args
+  # @params: args
+  # precondition: args[0] is the command name
   def set_args(args)
-    
-    puts args.size
     if args.size < 3
       raise "Insufficient arguments! Expected: " + self.usage()
     end
     @path = args[1]
     @contents = ""
     for index in 2 ... args.size 
-      @contents += args[index].to_s
+      @contents += args[index].to_s + " "
     end
   end
+  
 end
 
+class Factory
+
+  def initialize()
+      @commandInvoker = Invoker.new
+  end
+  
+  def getInvoker()
+    return @commandInvoker
+  end
+  
+end
+
+# ConsoleApplication
+# A simple Command Line Application
+# which allows the user to type registered commands 
+# and undo or redo them.  
 class ConsoleApplication
   
   def initialize()
-    @commands_list = Hash.new
-    @commandInvoker = Invoker.new
-  end
-  
-  def register_commands  
-    new_file_cmd = CreateFileCommand.new
-    puts new_file_cmd.usage()
-    @commands_list["new_file"] = new_file_cmd
+      @commandFactory = Factory.new
   end
   
   def quit? 
@@ -133,23 +182,25 @@ class ConsoleApplication
       
       # read a multitoken command, i.e. new_file "myfile.txt", "This is a new File"
       commands = cmd.split()
-      
-      if @commands_list.include?(commands[0])
-        @commandInvoker.doCommand(@commands_list[commands[0]], commands)        
+      # puts @commandFactory.inspect
+    
+      if @commandFactory.getInvoker().getCommands().include?(commands[0])
+        @commandFactory.getInvoker().doCommand(commands[0], commands)        
       end
       
       if cmd.chomp.downcase == 'redo'
-        @commandInvoker.redoCommand()
+         @commandFactory.getInvoker().redoCommand()
       end
       
       if cmd.chomp.downcase == 'undo'
-        @commandInvoker.undoCommand()
+         @commandFactory.getInvoker().undoCommand()
       end
       
       if cmd.chomp.downcase == '-h'
         puts "Available commands:"
-        @commands_list.each_pair do |k,v| 
-          puts v.usage()
+        
+        @commandFactory.getInvoker().getCommands().each_pair do |k,v|
+          puts eval(v).usage()
         end
         puts "undo - undo a command"
         puts "redo - redo a command"
@@ -163,16 +214,12 @@ class ConsoleApplication
   def main
     puts "Enter a command, redo, undo or -h for help, Q to quit"
     loop do
-      
       break if quit?
-      
       sleep 5
-      
     end
   end
+  
 end
 
 console = ConsoleApplication.new
-console.register_commands
 console.main
-#client = Client.new
